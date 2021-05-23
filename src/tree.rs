@@ -47,6 +47,12 @@ impl Tree {
         self.my_root
     }
 
+    /// Clears the tree.
+    pub fn clear(&mut self) {
+        self.delta.clear();
+        self.my_root = Hashed::default()
+    }
+
     /// Obtains the value bound to this key, along with the proof.
     pub fn get_with_proof(&self, needle: Hashed) -> (Bytes, FullProof) {
         let mut current_hash = self.my_root;
