@@ -25,16 +25,18 @@ fn main() {
 }
 
 fn test_once(data: &[u8]) {
-    let broken_up: HashSet<Hashed> = data
+    let broken_up: Vec<Hashed> = data
         .chunks_exact(32)
         .map(|v| v.try_into().unwrap())
         .collect();
     let forest = Forest::new(InMemoryBackend::default());
     let mut tree = forest.open_tree([0; 32]).unwrap();
     for bytes in broken_up.iter() {
+        let pre_count = tree.iter().count();
         tree.insert(*bytes, Bytes::copy_from_slice(bytes));
+        // tree size must have increased
+        assert!(tree.iter().count() >= pre_count);
     }
-    assert_eq!(tree.iter().count(), broken_up.len());
     for bytes in broken_up.iter() {
         let (val, proof) = tree.get_with_proof(*bytes);
         assert!(proof.verify(tree.root_hash(), *bytes, &val));
