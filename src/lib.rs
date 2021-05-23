@@ -15,9 +15,14 @@ mod tests {
 
     use super::*;
 
+    fn init_logs() {
+        let _ =
+            env_logger::Builder::from_env(Env::default().default_filter_or("novasmt")).try_init();
+    }
+
     #[test]
     fn basic_insert_get() {
-        env_logger::Builder::from_env(Env::default().default_filter_or("novasmt")).init();
+        init_logs();
         let forest = Forest::new(InMemoryBackend::default());
         let mut tree = forest.open_tree([0; 32]).unwrap();
         for i in 0u64..1000 {
@@ -39,7 +44,7 @@ mod tests {
 
     #[test]
     fn basic_insert_delete() {
-        env_logger::Builder::from_env(Env::default().default_filter_or("novasmt")).init();
+        init_logs();
         let forest = Forest::new(InMemoryBackend::default());
         let mut tree = forest.open_tree([0; 32]).unwrap();
         for i in 0u64..1000 {

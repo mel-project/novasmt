@@ -57,9 +57,13 @@ impl Tree {
     pub fn get_with_proof(&self, needle: Hashed) -> (Bytes, FullProof) {
         let mut current_hash = self.my_root;
         let mut proof_hashes = Vec::with_capacity(256);
-        for bit in key_to_path(&needle) {
+        for (idx, bit) in key_to_path(&needle)
+            .chain(std::iter::once(false))
+            .enumerate()
+        {
             match self.get_bnode(current_hash) {
                 None => {
+                    assert_eq!(current_hash, [0; 32]);
                     // the remainder of the proof is all zeros
                     while proof_hashes.len() < 256 {
                         proof_hashes.push([0; 32]);
@@ -67,6 +71,12 @@ impl Tree {
                     return (Bytes::new(), FullProof(proof_hashes));
                 }
                 Some(BackendNode::Internal(left, right)) => {
+                    log::trace!(
+                        "internal({}, {}) at bit {}",
+                        hex::encode(left),
+                        hex::encode(right),
+                        idx
+                    );
                     if bit {
                         current_hash = right;
                         proof_hashes.push(left);
@@ -104,7 +114,7 @@ impl Tree {
                 }
             }
         }
-        panic!("reached bottom of tree without finding a leaf or None")
+        panic!("reached bottom of the tree and didn't find anything");
     }
 
     /// Sets a key/value pair.
