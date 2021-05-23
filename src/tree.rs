@@ -3,6 +3,7 @@ use std::{collections::HashSet, sync::Arc};
 use bitvec::{order::Msb0, slice::BitSlice};
 use bytes::Bytes;
 use dashmap::DashMap;
+use genawaiter::rc::Gen;
 
 use crate::{
     hash::hash_node, key_to_path, singleton_smt_root, BackendDB, BackendNode, FullProof, Hashed,
@@ -217,6 +218,31 @@ impl Tree {
         self.backend.set_batch(&pairs);
         self.delta.clear();
         self._guard = Arc::new(self.rcmap.get_guard(self.my_root));
+    }
+
+    /// Iterates through the elements of the tree in an arbitrary order.
+    pub fn iter(&'_ self) -> impl Iterator<Item = (Hashed, Bytes)> + '_ {
+        let gen = Gen::new(|co| async move {
+            let mut dfs_stack: Vec<Hashed> = vec![self.my_root];
+            while let Some(top) = dfs_stack.pop() {
+                if top == [0; 32] {
+                    continue;
+                }
+                match self
+                    .get_bnode(top)
+                    .expect("dangling pointer when iterating")
+                {
+                    BackendNode::Internal(left, right) => {
+                        dfs_stack.push(left);
+                        dfs_stack.push(right);
+                    }
+                    BackendNode::Leaf(key, value) => {
+                        co.yield_((key, value)).await;
+                    }
+                }
+            }
+        });
+        gen.into_iter()
     }
 
     /// Garbage-collect the tree if needs be.

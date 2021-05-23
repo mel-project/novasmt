@@ -56,6 +56,9 @@ mod tests {
             tree.save();
             forest.delete_tree(old_root);
             tree.get_with_proof([0; 32]);
+            for (i, _) in tree.iter().enumerate() {
+                log::debug!("{:?}", i);
+            }
         })
         .join()
         .unwrap();
