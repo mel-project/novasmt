@@ -239,9 +239,10 @@ impl Tree {
     }
 }
 
-/// A forest that contains many trees. Can be thought of as a database full of trees.
+/// A forest that contains many trees. Can be thought of as a database full of trees. For ergonomics, internally contains an [Arc] and can be freely cloned around.
 ///
 /// Note that the only supported methods are to open and delete trees. To *save* a tree, the [Tree::save] method should be called.
+#[derive(Clone)]
 pub struct Forest {
     backend: Arc<dyn BackendDB>,
     rcmap: RefcountMap,
