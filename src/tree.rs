@@ -293,7 +293,15 @@ impl Forest {
     }
 }
 
-type Labooyah = Arc<DashMap<Hashed, (usize, Vec<scopeguard::ScopeGuard<(), Box<dyn FnOnce(())>>>)>>;
+type Labooyah = Arc<
+    DashMap<
+        Hashed,
+        (
+            usize,
+            Vec<scopeguard::ScopeGuard<(), Box<dyn FnOnce(()) + Send + Sync>>>,
+        ),
+    >,
+>;
 
 /// A structure that keeps track of hashes mapped to refcounts
 #[derive(Default, Clone)]

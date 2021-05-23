@@ -47,13 +47,17 @@ mod tests {
             tree.insert(key, key.to_vec().into());
         }
         tree.save();
-        let old_root = tree.root_hash();
-        for i in 0u64..500 {
-            let key = hash_data(&i.to_be_bytes());
-            tree.insert(key, vec![].into());
-        }
-        tree.save();
-        forest.delete_tree(old_root);
-        tree.get_with_proof([0; 32]);
+        std::thread::spawn(move || {
+            let old_root = tree.root_hash();
+            for i in 0u64..500 {
+                let key = hash_data(&i.to_be_bytes());
+                tree.insert(key, vec![].into());
+            }
+            tree.save();
+            forest.delete_tree(old_root);
+            tree.get_with_proof([0; 32]);
+        })
+        .join()
+        .unwrap();
     }
 }
