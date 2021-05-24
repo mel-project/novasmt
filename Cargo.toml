@@ -15,7 +15,7 @@ serde={version="1", features=["derive"]}
 bitvec="0.22"
 blake3="0.3.7"
 parking_lot="0.11"
-dashmap="4"
+
 bytes={version="1", features=["serde"]}
 log="0.4"
 scopeguard="1"

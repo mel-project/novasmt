@@ -1,9 +1,12 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::{hash_map::Entry, HashMap, HashSet},
+    sync::Arc,
+};
 
 use bitvec::{order::Msb0, slice::BitSlice};
 use bytes::Bytes;
-use dashmap::DashMap;
 use genawaiter::rc::Gen;
+use parking_lot::RwLock;
 use scopeguard::ScopeGuard;
 
 use crate::{
@@ -365,12 +368,13 @@ impl Forest {
 
     /// Deletes the tree at the given hash. If there are outstanding references to the tree, the deletion will not happen right away.
     pub fn delete_tree(&self, root_hash: Hashed) {
-        match self.rcmap.mapping.get_mut(&root_hash) {
+        let mut mapping = self.rcmap.mapping.write();
+        match mapping.get_mut(&root_hash) {
             None => {
                 // safe to delete right away
                 self.backend.delete_root(root_hash);
             }
-            Some(mut inner) => {
+            Some(inner) => {
                 // we queue the root on the backend
                 self.backend.delete_root_tomorrow(root_hash);
                 let backend = self.backend.clone();
@@ -385,12 +389,14 @@ impl Forest {
 }
 
 type Labooyah = Arc<
-    DashMap<
-        Hashed,
-        (
-            usize,
-            Vec<scopeguard::ScopeGuard<(), Box<dyn FnOnce(()) + Send + Sync>>>,
-        ),
+    RwLock<
+        HashMap<
+            Hashed,
+            (
+                usize,
+                Vec<scopeguard::ScopeGuard<(), Box<dyn FnOnce(()) + Send + Sync>>>,
+            ),
+        >,
     >,
 >;
 
@@ -402,7 +408,8 @@ struct RefcountMap {
 
 impl RefcountMap {
     fn get_guard(&self, hash: Hashed) -> KeyGuard {
-        let mut rc = self.mapping.entry(hash).or_default();
+        let mut mapping = self.mapping.write();
+        let mut rc = mapping.entry(hash).or_default();
         rc.0 += 1;
         // when we are getting a new guard, we know that we don't want deletion to happen anymore.
         for guard in rc.1.drain(0..) {
@@ -423,16 +430,17 @@ struct KeyGuard {
 
 impl Drop for KeyGuard {
     fn drop(&mut self) {
-        let slot = self.mapping.entry(self.hash);
+        let mut mapping = self.mapping.write();
+        let slot = mapping.entry(self.hash);
         match slot {
-            dashmap::mapref::entry::Entry::Occupied(mut occupied) => {
+            Entry::Occupied(mut occupied) => {
                 let refcount = occupied.get_mut();
                 refcount.0 -= 1;
                 if refcount.0 == 0 {
                     occupied.remove_entry();
                 }
             }
-            dashmap::mapref::entry::Entry::Vacant(_) => {
+            Entry::Vacant(_) => {
                 panic!("refcountmap missing key when keyguard drops")
             }
         }

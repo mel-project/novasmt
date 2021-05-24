@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::Hashed;
 
@@ -38,12 +38,12 @@ pub struct InMemoryBackend {
 impl BackendDB for InMemoryBackend {
     fn set_batch(&self, kvv: &[(Hashed, BackendNode)]) {
         let mut inner = self.inner.write();
-        let mut increment = HashSet::new();
+        let mut increment = Vec::new();
         for (k, v) in kvv {
             if inner.insert(*k, (v.clone(), 0)).is_none() {
                 if let BackendNode::Internal(left, right) = v {
-                    increment.insert(*left);
-                    increment.insert(*right);
+                    increment.push(*left);
+                    increment.push(*right);
                 }
             }
         }
