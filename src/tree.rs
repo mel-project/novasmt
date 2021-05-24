@@ -4,6 +4,7 @@ use bitvec::{order::Msb0, slice::BitSlice};
 use bytes::Bytes;
 use dashmap::DashMap;
 use genawaiter::rc::Gen;
+use scopeguard::ScopeGuard;
 
 use crate::{
     hash::hash_node, key_to_path, singleton_smt_root, BackendDB, BackendNode, FullProof, Hashed,
@@ -404,7 +405,10 @@ impl RefcountMap {
         let mut rc = self.mapping.entry(hash).or_default();
         rc.0 += 1;
         // when we are getting a new guard, we know that we don't want deletion to happen anymore.
-        rc.1.clear();
+        for guard in rc.1.drain(0..) {
+            // "defuse" the scopeguard
+            ScopeGuard::into_inner(guard);
+        }
         KeyGuard {
             hash,
             mapping: self.mapping.clone(),
