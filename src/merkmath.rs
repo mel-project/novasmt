@@ -75,8 +75,18 @@ impl FullProof {
         let mut my_root = hash_data(val);
         for (&level, &direction) in self.0.iter().zip(path.iter()).rev() {
             if direction {
+                log::trace!(
+                    "verify: my_root <- hash_node({}, {})",
+                    hex::encode(&level),
+                    hex::encode(&my_root)
+                );
                 my_root = hash_node(level, my_root)
             } else {
+                log::trace!(
+                    "verify: my_root <- hash_node({}, {})",
+                    hex::encode(&my_root),
+                    hex::encode(&level)
+                );
                 my_root = hash_node(my_root, level)
             }
         }

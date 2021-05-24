@@ -92,6 +92,7 @@ impl Tree {
                         while proof_hashes.len() < 256 {
                             proof_hashes.push([0; 32]);
                         }
+                        log::trace!("found key=needle");
                         return (val, FullProof(proof_hashes));
                     } else {
                         // then we find the first *diverging* bit in the key
@@ -102,13 +103,26 @@ impl Tree {
                                 .find(|i| leaf_key_bits[*i] != needle_bits[*i])
                                 .unwrap()
                         };
-                        // first fill with zeros
-                        while proof_hashes.len() < 256 {
-                            proof_hashes.push([0; 32]);
+                        log::trace!(
+                            "found divergence at bit {} between key {} and needle {}",
+                            diverging_bit_idx,
+                            hex::encode(&key),
+                            hex::encode(&needle)
+                        );
+
+                        if proof_hashes.len() < 256 {
+                            // first fill with zeros
+                            while proof_hashes.len() < 256 {
+                                proof_hashes.push([0; 32]);
+                            }
+                            // at the divergence point, we *don't* have a zero. Instead, we have what would be the hash of a one-element SMT at that height
+                            proof_hashes[diverging_bit_idx] =
+                                singleton_smt_root(255 - diverging_bit_idx, key, &val);
+                            log::trace!(
+                                "divergence proof nibble: {}",
+                                hex::encode(proof_hashes[diverging_bit_idx])
+                            );
                         }
-                        // at the divergence point, we *don't* have a zero. Instead, we have what would be the hash of a one-element SMT at that height
-                        proof_hashes[diverging_bit_idx] =
-                            singleton_smt_root(255 - diverging_bit_idx, key, &val);
                         return (Bytes::new(), FullProof(proof_hashes));
                     }
                 }
@@ -119,6 +133,7 @@ impl Tree {
 
     /// Sets a key/value pair.
     pub fn insert(&mut self, key: Hashed, value: Bytes) {
+        log::trace!("insert({}, {})", hex::encode(&key), hex::encode(&value));
         // special case: we are the empty tree
         if self.my_root == [0; 32] {
             let root = singleton_smt_root(256, key, &value);
@@ -131,18 +146,27 @@ impl Tree {
         let mut path_to_rewrite: Vec<BackendNode> = vec![self.get_bnode(self.my_root).unwrap()];
         // the leaf hash. we use this to "fix" the path after the loop.
         let mut leaf_hash = [0; 32];
-        for (idx, bit) in key_to_path(&key).enumerate() {
+        for (idx, bit) in key_to_path(&key).chain(std::iter::once(false)).enumerate() {
+            log::trace!("insert at idx {}", idx);
             let popped = path_to_rewrite.pop().unwrap();
             match popped.clone() {
                 BackendNode::Internal(left, right) => {
+                    log::trace!(
+                        "insert at internal({}, {})",
+                        hex::encode(&left),
+                        hex::encode(&right)
+                    );
                     if bit && right != [0; 32] {
+                        log::trace!("insert going down right");
                         path_to_rewrite.push(popped);
                         path_to_rewrite.push(self.get_bnode(right).unwrap())
                     } else if !bit && left != [0; 32] {
+                        log::trace!("insert going down left");
                         path_to_rewrite.push(popped);
                         path_to_rewrite.push(self.get_bnode(left).unwrap())
                     } else {
                         // create new Leaf
+                        log::trace!("insert creating leaf as child of internal");
                         let new_bnode_hash = singleton_smt_root(255 - idx, key, &value);
                         let new_bnode = BackendNode::Leaf(key, value);
                         self.insert_bnode(new_bnode_hash, new_bnode);
@@ -153,23 +177,37 @@ impl Tree {
                 }
                 BackendNode::Leaf(leaf_key, leaf_value) => {
                     if leaf_key == key && leaf_value == value {
+                        log::trace!("insert SKIPPED");
                         return;
                     }
-                    if leaf_key == key {
+                    if leaf_key == key || idx == 256 {
                         let new_leaf_hash = singleton_smt_root(256 - idx, key, &value);
-                        self.insert_bnode(new_leaf_hash, BackendNode::Leaf(leaf_key, value));
+                        log::trace!(
+                            "insert rewriting leaf {:?} at leaf_key={}, key={}",
+                            value,
+                            hex::encode(&leaf_key),
+                            hex::encode(&key)
+                        );
+                        leaf_hash = new_leaf_hash;
+                        self.insert_bnode(new_leaf_hash, BackendNode::Leaf(key, value));
                         break;
                     }
                     // this case is rather subtle.
                     // if we're not at the "fork" yet, the current bit will match that of the leaf key.
                     // in that case, we don't break immediately. instead, we synthesize an internal node and keep on rolling.
                     // this is a rare case (chance halves every round, so it's okay if this case is expensive)
+                    log::trace!(
+                        "at leaf with key={}, leaf_key={}",
+                        hex::encode(&key),
+                        hex::encode(&leaf_key)
+                    );
                     let diverging_bit_idx = {
                         let leaf_key_bits = BitSlice::<Msb0, _>::from_slice(&leaf_key).unwrap();
                         let key = BitSlice::<Msb0, _>::from_slice(&key).unwrap();
                         (0usize..).find(|i| leaf_key_bits[*i] != key[*i]).unwrap()
                     };
-                    if idx == diverging_bit_idx {
+                    // assert!(diverging_bit_idx >= idx);
+                    if idx >= diverging_bit_idx {
                         // we are at the fork. this means that we can safely make a 2-SMT, knowing that the root will have two nonzero children.
                         // this 2-SMT is then put in the path to rewrite.
                         let existing_leaf_new_hash =
@@ -180,25 +218,34 @@ impl Tree {
                         );
                         let new_leaf_hash = singleton_smt_root(255 - idx, key, &value);
                         self.insert_bnode(new_leaf_hash, BackendNode::Leaf(key, value));
+                        assert_ne!(leaf_key, key);
                         if bit {
-                            path_to_rewrite
-                                .push(BackendNode::Internal(existing_leaf_new_hash, new_leaf_hash));
+                            log::trace!("insert at the fork, to the right");
+                            leaf_hash = hash_node(existing_leaf_new_hash, new_leaf_hash);
+                            self.insert_bnode(
+                                leaf_hash,
+                                BackendNode::Internal(existing_leaf_new_hash, new_leaf_hash),
+                            );
                         } else {
-                            path_to_rewrite
-                                .push(BackendNode::Internal(new_leaf_hash, existing_leaf_new_hash));
+                            log::trace!("insert at the fork, to the left");
+                            leaf_hash = hash_node(new_leaf_hash, existing_leaf_new_hash);
+                            self.insert_bnode(
+                                leaf_hash,
+                                BackendNode::Internal(new_leaf_hash, existing_leaf_new_hash),
+                            );
                         }
-                        leaf_hash = new_leaf_hash;
                         break;
                     } else {
+                        log::trace!("insert not at the fork ({}, {})", idx, diverging_bit_idx);
                         // not at the fork yet.
-                        // we can push a completely dummy internal node because the next step will fix it.
+                        // we push an internal node with one arm "correct" for the time being
                         path_to_rewrite.push(BackendNode::Internal([0; 32], [0; 32]));
                         path_to_rewrite.push(popped);
                     }
                 }
             }
         }
-
+        log::trace!("path_to_rewrite {}", path_to_rewrite.len());
         // at this point, path_to_rewrite has at most 1 wrong child at each level. we go through it in reverse to correct it.
         for (bit, to_rewrite) in key_to_path(&key).zip(path_to_rewrite.iter_mut()).rev() {
             match to_rewrite {

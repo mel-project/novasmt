@@ -25,7 +25,7 @@ mod tests {
         init_logs();
         let forest = Forest::new(InMemoryBackend::default());
         let mut tree = forest.open_tree([0; 32]).unwrap();
-        for i in 0u64..1000 {
+        for i in 0u64..100 {
             let key = hash_data(&i.to_be_bytes());
             tree.insert(key, key.to_vec().into());
         }
@@ -33,12 +33,15 @@ mod tests {
         tree.get_with_proof([0; 32]);
         forest.delete_tree(tree.root_hash());
         for i in 0u64..100 {
-            let key = hash_data(&i.to_be_bytes());
+            let mut key = hash_data(&i.to_be_bytes());
             let (val, proof) = tree.get_with_proof(key);
             let mut val = val.to_vec();
             assert!(proof.verify(tree.root_hash(), key, &val));
             val[0] ^= 1;
             assert!(!proof.verify(tree.root_hash(), key, &val));
+            key[0] ^= 1;
+            let (val, proof) = tree.get_with_proof(key);
+            assert!(proof.verify(tree.root_hash(), key, &val));
         }
     }
 
@@ -61,9 +64,6 @@ mod tests {
             tree.save();
             forest.delete_tree(old_root);
             tree.get_with_proof([0; 32]);
-            for (i, _) in tree.iter().enumerate() {
-                log::debug!("{:?}", i);
-            }
         })
         .join()
         .unwrap();

@@ -1,4 +1,4 @@
-use std::{collections::HashSet, convert::TryInto};
+use std::convert::TryInto;
 
 use bytes::Bytes;
 #[cfg(fuzzing)]
@@ -33,15 +33,27 @@ fn test_once(data: &[u8]) {
     let mut tree = forest.open_tree([0; 32]).unwrap();
     for bytes in broken_up.iter() {
         let pre_count = tree.iter().count();
+        dbg!(pre_count);
+        tree.insert([0; 32], Bytes::copy_from_slice(bytes));
+        assert!(dbg!(tree.iter().count()) >= pre_count);
+        assert!(tree
+            .get_with_proof([0; 32])
+            .1
+            .verify(tree.root_hash(), [0; 32], bytes.as_ref()));
         tree.insert(*bytes, Bytes::copy_from_slice(bytes));
-        // tree size must have increased
-        assert!(tree.iter().count() >= pre_count);
+        assert!(dbg!(tree.iter().count()) >= pre_count);
+        let gotten = tree.get_with_proof(*bytes);
+        assert_eq!(gotten.0.as_ref(), bytes.as_ref());
+        assert!(tree
+            .get_with_proof(*bytes)
+            .1
+            .verify(tree.root_hash(), *bytes, bytes.as_ref()));
     }
-    for bytes in broken_up.iter() {
-        let (val, proof) = tree.get_with_proof(*bytes);
-        assert!(proof.verify(tree.root_hash(), *bytes, &val));
-        assert_eq!(bytes.as_ref(), val.as_ref());
-    }
+    // for bytes in broken_up.iter() {
+    //     let (val, proof) = tree.get_with_proof(*bytes);
+    //     assert!(proof.verify(tree.root_hash(), *bytes, &val));
+    //     assert_eq!(bytes.as_ref(), val.as_ref());
+    // }
 }
 
 #[cfg(not(fuzzing))]
