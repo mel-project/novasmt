@@ -10,21 +10,21 @@ repository="https://github.com/themeliolabs/novasmt"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-im="15"
-serde={version="1", features=["derive"]}
-bitvec="0.22"
-blake3="0.3.7"
-parking_lot="0.11"
+im= "15.0.0"
+serde={ version = "1.0.126", features = ["derive"] }
+bitvec= "0.22.3"
+blake3= "0.3.8"
+parking_lot= "0.11.1"
 
-bytes={version="1", features=["serde"]}
-log="0.4"
-scopeguard="1"
-genawaiter="0.99.1"
-hex="0.4"
+bytes={ version = "1.0.1", features = ["serde"] }
+log= "0.4.14"
+scopeguard= "1.1.0"
+genawaiter= "0.99.1"
+hex= "0.4.3"
 
 [target.'cfg(fuzzing)'.dependencies]
-honggfuzz="0.5"
-env_logger="0.8"
+honggfuzz= "0.5.54"
+env_logger= "0.8.3"
 
 [profile.release]
 opt-level=3
@@ -32,8 +32,8 @@ debug=2
 overflow-checks = true
 
 [dev-dependencies]
-criterion = "0.3"
-env_logger="0.8"
+criterion = "0.3.4"
+env_logger= "0.8.3"
 
 [[bench]]
 name = "criterion"
