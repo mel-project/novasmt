@@ -12,7 +12,8 @@ repository="https://github.com/themeliolabs/novasmt"
 [dependencies]
 im= "15.0.0"
 serde={ version = "1.0.126", features = ["derive"] }
-bitvec= "0.22.3"
+bitvec="0.20.0"
+# funty="<=1.1"
 blake3= "0.3.8"
 parking_lot= "0.11.1"
 

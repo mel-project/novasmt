@@ -105,7 +105,7 @@ impl CompressedProof {
         if b.len() < 32 || b.len() % 32 != 0 {
             return None;
         }
-        let bitmap = BitVec::<Msb0, u8>::from_slice(&b[..32]).unwrap();
+        let bitmap = BitVec::<Msb0, u8>::from_vec(b[..32].to_vec());
         let mut b = &b[32..];
         let mut out = Vec::new();
         // go through the bitmap. if b is set, insert a zero. otherwise, take 32 bytes from b. if b runs out, we are dead.
