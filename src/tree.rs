@@ -38,6 +38,11 @@ impl Tree {
             .or_else(|| self.backend.get(hash))
     }
 
+    /// A rough count of how many "delta" tree nodes are in this tree. These nodes are in-memory, not committed to the backing storage, and take up RAM.
+    pub fn delta_count(&self) -> usize {
+        self.delta.len()
+    }
+
     /// Inserts a bnode.
     fn insert_bnode(&mut self, hash: Hashed, bnode: BackendNode) {
         if hash == [0; 32] {
