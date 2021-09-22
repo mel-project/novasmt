@@ -10,7 +10,7 @@ repository="https://github.com/themeliolabs/novasmt"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-im= "15.0.0"
+imbl="1"
 serde={ version = "1.0.126", features = ["derive"] }
 bitvec="0.20.0"
 # funty="<=1.1"

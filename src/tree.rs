@@ -23,7 +23,7 @@ pub struct Tree {
     rcmap: RefcountMap,
     backend: Arc<dyn BackendDB>,
     /// *New* nodes that this tree has
-    delta: im::HashMap<Hashed, BackendNode>,
+    delta: imbl::HashMap<Hashed, BackendNode>,
     my_root: Hashed,
 
     gc_watermark: usize,
