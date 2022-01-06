@@ -1,14 +1,12 @@
 use std::convert::TryInto;
 
-use bytes::Bytes;
 #[cfg(fuzzing)]
 use honggfuzz::fuzz;
-use novasmt::{Forest, Hashed, InMemoryBackend};
-
+use novasmt::{Database, Hashed, InMemoryCas};
 #[cfg(fuzzing)]
 fn main() {
     use env_logger::Env;
-    env_logger::Builder::from_env(Env::default().default_filter_or("novasmt")).init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("trace")).init();
     // Here you can parse `std::env::args and
     // setup / initialize your project
 
@@ -25,26 +23,25 @@ fn main() {
 }
 
 fn test_once(data: &[u8]) {
-    let broken_up: Vec<Hashed> = data.windows(32).map(|v| v.try_into().unwrap()).collect();
-    let forest = Forest::new(InMemoryBackend::default());
-    let mut tree = forest.open_tree([0; 32]).unwrap();
+    let broken_up: Vec<Hashed> = data
+        .chunks_exact(32)
+        .map(|v| v.try_into().unwrap())
+        .collect();
+    let forest = Database::new(InMemoryCas::default());
+    let mut tree = forest.get_tree([0; 32]).unwrap();
     for bytes in broken_up.iter() {
-        let pre_count = tree.iter().count();
-        dbg!(pre_count);
-        tree.insert([0; 32], Bytes::copy_from_slice(bytes));
-        assert!(tree
-            .get_with_proof([0; 32])
-            .1
-            .verify(tree.root_hash(), [0; 32], bytes.as_ref()));
-        forest.delete_tree(tree.root_hash());
-        tree.save();
-        tree.insert(*bytes, Bytes::copy_from_slice(bytes));
-        let gotten = tree.get_with_proof(*bytes);
-        assert_eq!(gotten.0.as_ref(), bytes.as_ref());
-        assert!(tree
-            .get_with_proof(*bytes)
-            .1
-            .verify(tree.root_hash(), *bytes, bytes.as_ref()));
+        tree.insert([0; 32], bytes);
+        log::warn!("inserting zero => {}", hex::encode(bytes));
+        let (r, p) = tree.get_with_proof([0; 32]);
+        assert_eq!(&r[..], &bytes[..]);
+        assert!(p.verify(tree.root_hash(), [0; 32], bytes.as_ref()));
+        // tree.insert(*bytes, bytes);
+        // let gotten = tree.get_with_proof(*bytes);
+        // assert_eq!(gotten.0.as_ref(), bytes.as_ref());
+        // assert!(tree
+        //     .get_with_proof(*bytes)
+        //     .1
+        //     .verify(tree.root_hash(), *bytes, bytes.as_ref()));
         // tree.save();
     }
     // for bytes in broken_up.iter() {
