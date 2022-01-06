@@ -5,7 +5,7 @@ use ethnum::U256;
 
 use crate::{
     lowlevel::{ExplodedHexary, RawNode},
-    Hashed,
+    singleton_smt_root, FullProof, Hashed,
 };
 
 /// Trait that implements a thread-safe, concurrent low-level content addressed store.
@@ -78,6 +78,22 @@ pub struct Tree<C: ContentAddrStore> {
 }
 
 impl<C: ContentAddrStore> Tree<C> {
+    /// Obtains the value associated with the given key.
+    pub fn get<'a>(&'a self, key: Hashed) -> Cow<'a, [u8]> {
+        self.get_value(key, None)
+    }
+
+    /// Obtains the value associated with the given key, along with an associated proof.
+    pub fn get_with_proof<'a>(&'a self, key: Hashed) -> (Cow<'a, [u8]>, FullProof) {
+        let mut p = Vec::new();
+        let res = self.get_value(key, Some(&mut |h| p.push(h)));
+        log::trace!("proof: {:?}", p);
+        p.resize(256, Default::default());
+        let p = FullProof(p);
+        debug_assert!(p.verify(self.ptr, key, &res));
+        (res, p)
+    }
+
     /// Low-level getting function.
     fn get_value<'a>(
         &'a self,
@@ -87,13 +103,29 @@ impl<C: ContentAddrStore> Tree<C> {
         // Imperative style traversal, starting from the root
         let mut ptr = self.ptr;
         let mut ikey = U256::from_be_bytes(key);
-        while ikey > 0 {
+        loop {
             match self.cas.realize(ptr) {
-                Some(RawNode::Single(_, single_key, data)) => {
+                Some(RawNode::Single(height, single_key, data)) => {
                     if key == single_key {
                         return data;
                     } else {
-                        todo!("synthesize the correct proof here")
+                        if let Some(opf) = on_proof_frag.as_mut() {
+                            let mut diverging_height = (height as usize) * 4;
+                            let mut single_ikey = truncate_shl(
+                                U256::from_be_bytes(single_key),
+                                (64 - (height as u32)) * 4,
+                            );
+                            while (single_ikey & (U256::ONE << 255)) == (ikey & (U256::ONE << 255))
+                            {
+                                single_ikey = truncate_shl(single_ikey, 1);
+                                ikey = truncate_shl(ikey, 1);
+                                diverging_height -= 1;
+                                opf(Hashed::default());
+                            }
+                            assert!(high4(single_ikey) != high4(ikey));
+                            opf(singleton_smt_root(diverging_height - 1, single_key, &data));
+                        }
+                        return Cow::Owned(Vec::new());
                     }
                 }
                 Some(RawNode::Hexary(_, _, gggc)) => {
@@ -106,12 +138,11 @@ impl<C: ContentAddrStore> Tree<C> {
                     log::trace!("key frag {} for key {}", key_frag, hex::encode(key));
                     ptr = *gggc[key_frag];
                 }
-                None => todo!(),
+                None => return Cow::Owned(Vec::new()),
             }
             // zero top four bits
             ikey = rm4(ikey)
         }
-        Cow::Owned(Vec::new())
     }
 
     /// Insert a key-value pair, returning a new value.
@@ -171,6 +202,12 @@ impl<C: ContentAddrStore> Tree<C> {
             Some(RawNode::Single(height, single_key, node_value)) => {
                 assert!(height == rec_height);
                 if key == single_key {
+                    if value.len() == 0 {
+                        return Self {
+                            cas: self.cas,
+                            ptr: Hashed::default(),
+                        };
+                    }
                     RawNode::Single(height, key, node_value)
                 } else {
                     // see whether the two keys differ in their first 4 bits
@@ -235,16 +272,32 @@ impl<C: ContentAddrStore> Tree<C> {
                 let sub_tree = Self {
                     cas: self.cas.clone(),
                     ptr: **to_change,
-                }
-                .with_binding(key, rm4(ikey), value, rec_height - 1);
+                };
+                let pre_count = sub_tree.len();
+                let sub_tree = sub_tree.with_binding(key, rm4(ikey), value, rec_height - 1);
                 *to_change = Cow::Owned(sub_tree.ptr);
-                RawNode::Hexary(height, count + 1, gggc)
+                RawNode::Hexary(
+                    height,
+                    if sub_tree.len() > pre_count {
+                        count + (sub_tree.len() - pre_count)
+                    } else {
+                        count - (pre_count - sub_tree.len())
+                    },
+                    gggc,
+                )
             }
             None => RawNode::Single(rec_height, key, Cow::Owned(value.to_vec())),
         };
         let ptr = new_node.hash();
         self.cas.insert(&ptr, &new_node.to_bytes());
         Self { cas: self.cas, ptr }
+    }
+
+    pub fn len(&self) -> u64 {
+        self.cas
+            .realize(self.ptr)
+            .map(|r| r.count())
+            .unwrap_or_default()
     }
 }
 
@@ -297,7 +350,8 @@ mod tests {
 
     #[test]
     fn simple_insertion() {
-        let bindings = (0..100)
+        let count = 100u64;
+        let bindings = (0..count)
             .map(|i| {
                 (
                     *blake3::hash(format!("key-{}", i).as_bytes()).as_bytes(),
@@ -310,10 +364,16 @@ mod tests {
         for (k, v) in bindings.iter() {
             empty = empty.with(*k, &v);
         }
+        assert_eq!(empty.len(), count);
         // empty.debug_graphviz();
+        let _ = empty.get_with_proof([0; 32]);
         eprintln!("{} elements in database", db.backing_store().len());
         bindings
             .par_iter()
-            .for_each(|(k, v)| assert_eq!(empty.get_value(*k, None), v.as_slice()));
+            .for_each(|(k, v)| assert_eq!(empty.get_with_proof(*k).0, v.as_slice()));
+        for (i, (k, _)) in bindings.into_iter().enumerate() {
+            assert_eq!(empty.len(), count - (i as u64));
+            empty = empty.with(k, &[]);
+        }
     }
 }
