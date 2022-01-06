@@ -2,6 +2,7 @@ use std::{borrow::Cow, sync::Arc};
 
 use dashmap::DashMap;
 use ethnum::U256;
+use replace_with::replace_with_or_abort;
 
 use crate::{
     lowlevel::{ExplodedHexary, RawNode},
@@ -91,6 +92,11 @@ impl<C: ContentAddrStore> Tree<C> {
         self.get_value(key, None)
     }
 
+    /// Obtains the root hash.
+    pub fn root_hash(&self) -> Hashed {
+        self.ptr
+    }
+
     /// Obtains the value associated with the given key, along with an associated proof.
     pub fn get_with_proof<'a>(&'a self, key: Hashed) -> (Cow<'a, [u8]>, FullProof) {
         let mut p = Vec::new();
@@ -98,7 +104,7 @@ impl<C: ContentAddrStore> Tree<C> {
         log::trace!("proof: {:?}", p);
         p.resize(256, Default::default());
         let p = FullProof(p);
-        debug_assert!(p.verify(self.ptr, key, &res));
+        assert!(p.verify(self.ptr, key, &res));
         (res, p)
     }
 
@@ -131,7 +137,7 @@ impl<C: ContentAddrStore> Tree<C> {
                                 opf(Hashed::default());
                             }
                             assert!(high4(single_ikey) != high4(ikey));
-                            opf(singleton_smt_root(diverging_height - 1, single_key, &data));
+                            opf(singleton_smt_root(diverging_height, single_key, &data));
                         }
                         return Cow::Owned(Vec::new());
                     }
@@ -151,6 +157,11 @@ impl<C: ContentAddrStore> Tree<C> {
             // zero top four bits
             ikey = rm4(ikey)
         }
+    }
+
+    /// Insert a key-value pair, mutating this value.
+    pub fn insert(&mut self, key: Hashed, value: &[u8]) {
+        replace_with_or_abort(self, |t| t.with(key, value))
     }
 
     /// Insert a key-value pair, returning a new value.
@@ -216,7 +227,7 @@ impl<C: ContentAddrStore> Tree<C> {
                             ptr: Hashed::default(),
                         };
                     }
-                    RawNode::Single(height, key, node_value)
+                    RawNode::Single(height, key, Cow::Borrowed(value))
                 } else {
                     // see whether the two keys differ in their first 4 bits
                     let single_ikey = truncate_shl(
@@ -380,6 +391,8 @@ mod tests {
         }
         assert_eq!(empty.count(), count);
         // empty.debug_graphviz();
+        let _ = empty.get_with_proof([0; 32]);
+        empty.insert([0; 32], b"hello world");
         let _ = empty.get_with_proof([0; 32]);
         eprintln!("{} elements in database", db.storage().0.len());
         bindings
