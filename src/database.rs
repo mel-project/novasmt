@@ -33,13 +33,21 @@ pub trait ContentAddrStore: Send + Sync {
     }
 }
 
-impl ContentAddrStore for DashMap<Vec<u8>, Vec<u8>> {
+/// An in-memory ContentAddrStore.
+#[derive(Default, Debug)]
+pub struct InMemoryCas(DashMap<Vec<u8>, Vec<Vec<u8>>>);
+
+impl ContentAddrStore for InMemoryCas {
     fn get(&self, key: &[u8]) -> Option<Cow<'_, [u8]>> {
-        Some(Cow::Owned(self.get(key)?.clone()))
+        let r = self.0.get(key)?;
+        let r: &[u8] = r.last()?.as_slice();
+        // safety: because we never delete anything, r can never be a use-after-free.
+        Some(Cow::Borrowed(unsafe { std::mem::transmute(r) }))
     }
 
     fn insert(&self, key: &[u8], value: &[u8]) {
-        self.insert(key.to_owned(), value.to_owned());
+        let mut r = self.0.entry(key.to_owned()).or_default();
+        r.push(value.to_owned());
     }
 }
 
@@ -65,7 +73,7 @@ impl<C: ContentAddrStore> Database<C> {
     }
 
     /// Obtains a reference to the backing store.
-    pub fn backing_store(&self) -> &C {
+    pub fn storage(&self) -> &C {
         &self.cas
     }
 }
@@ -154,7 +162,7 @@ impl<C: ContentAddrStore> Tree<C> {
     /// Debug graphviz
     fn debug_graphviz(&self) {
         match self.cas.realize(self.ptr) {
-            Some(RawNode::Single(_, single_key, data)) => {
+            Some(RawNode::Single(_, single_key, _)) => {
                 eprintln!(
                     "{:?} [label=\"key {}\"];",
                     hex::encode(&self.ptr),
@@ -273,15 +281,15 @@ impl<C: ContentAddrStore> Tree<C> {
                     cas: self.cas.clone(),
                     ptr: **to_change,
                 };
-                let pre_count = sub_tree.len();
+                let pre_count = sub_tree.count();
                 let sub_tree = sub_tree.with_binding(key, rm4(ikey), value, rec_height - 1);
                 *to_change = Cow::Owned(sub_tree.ptr);
                 RawNode::Hexary(
                     height,
-                    if sub_tree.len() > pre_count {
-                        count + (sub_tree.len() - pre_count)
+                    if sub_tree.count() > pre_count {
+                        count + (sub_tree.count() - pre_count)
                     } else {
-                        count - (pre_count - sub_tree.len())
+                        count - (pre_count - sub_tree.count())
                     },
                     gggc,
                 )
@@ -293,11 +301,17 @@ impl<C: ContentAddrStore> Tree<C> {
         Self { cas: self.cas, ptr }
     }
 
-    pub fn len(&self) -> u64 {
+    /// Returns the number of elements in the mapping.
+    pub fn count(&self) -> u64 {
         self.cas
             .realize(self.ptr)
             .map(|r| r.count())
             .unwrap_or_default()
+    }
+
+    /// Returns a reference o the underlying backing storage.
+    pub fn storage(&self) -> &C {
+        &self.cas
     }
 }
 
@@ -359,20 +373,20 @@ mod tests {
                 )
             })
             .collect::<Vec<_>>();
-        let db = Database::new(DashMap::new());
+        let db = Database::new(InMemoryCas::default());
         let mut empty = db.get_tree(Hashed::default()).unwrap();
         for (k, v) in bindings.iter() {
             empty = empty.with(*k, &v);
         }
-        assert_eq!(empty.len(), count);
+        assert_eq!(empty.count(), count);
         // empty.debug_graphviz();
         let _ = empty.get_with_proof([0; 32]);
-        eprintln!("{} elements in database", db.backing_store().len());
+        eprintln!("{} elements in database", db.storage().0.len());
         bindings
             .par_iter()
             .for_each(|(k, v)| assert_eq!(empty.get_with_proof(*k).0, v.as_slice()));
         for (i, (k, _)) in bindings.into_iter().enumerate() {
-            assert_eq!(empty.len(), count - (i as u64));
+            assert_eq!(empty.count(), count - (i as u64));
             empty = empty.with(k, &[]);
         }
     }

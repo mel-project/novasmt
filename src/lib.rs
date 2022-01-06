@@ -2,6 +2,7 @@ mod database;
 mod hash;
 mod lowlevel;
 mod merkmath;
+pub use database::{ContentAddrStore, Database};
 pub use merkmath::*;
 
 pub type Hashed = [u8; 32];
