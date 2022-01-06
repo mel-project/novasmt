@@ -35,14 +35,15 @@ fn test_once(data: &[u8]) {
         let (r, p) = tree.get_with_proof([0; 32]);
         assert_eq!(&r[..], &bytes[..]);
         assert!(p.verify(tree.root_hash(), [0; 32], bytes.as_ref()));
-        // tree.insert(*bytes, bytes);
-        // let gotten = tree.get_with_proof(*bytes);
-        // assert_eq!(gotten.0.as_ref(), bytes.as_ref());
-        // assert!(tree
-        //     .get_with_proof(*bytes)
-        //     .1
-        //     .verify(tree.root_hash(), *bytes, bytes.as_ref()));
-        // tree.save();
+        tree.debug_graphviz();
+        tree.insert(*bytes, bytes);
+        tree.debug_graphviz();
+        let gotten = tree.get_with_proof(*bytes);
+        assert_eq!(gotten.0.as_ref(), bytes.as_ref());
+        assert!(tree
+            .get_with_proof(*bytes)
+            .1
+            .verify(tree.root_hash(), *bytes, bytes.as_ref()));
     }
     // for bytes in broken_up.iter() {
     //     let (val, proof) = tree.get_with_proof(*bytes);

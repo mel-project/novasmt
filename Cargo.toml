@@ -29,6 +29,7 @@ replace_with = "0.1.7"
 [target.'cfg(fuzzing)'.dependencies]
 honggfuzz= "0.5.54"
 env_logger= "0.9.0"
+backtrace="0.3"
 
 [profile.release]
 opt-level=3

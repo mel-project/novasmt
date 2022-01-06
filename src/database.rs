@@ -153,23 +153,30 @@ impl<C: ContentAddrStore> Tree<C> {
         // Imperative style traversal, starting from the root
         let mut ptr = self.ptr;
         let mut ikey = U256::from_be_bytes(key);
-        loop {
+        for depth in 0.. {
+            log::trace!("get at depth {}", depth);
             match self.cas.realize(ptr) {
                 Some(RawNode::Single(height, single_key, data)) => {
-                    if key == single_key {
+                    let mut single_ikey =
+                        truncate_shl(U256::from_be_bytes(single_key), (64 - (height as u32)) * 4);
+                    if ikey == single_ikey {
                         return data;
                     } else {
                         if let Some(opf) = on_proof_frag.as_mut() {
                             let mut diverging_height = (height as usize) * 4;
-                            let mut single_ikey = truncate_shl(
-                                U256::from_be_bytes(single_key),
-                                (64 - (height as u32)) * 4,
-                            );
+                            log::trace!("finding divergent at with single_ikey = {}, ikey = {}, single_key = {}, key = {}", single_ikey, ikey, hex::encode(&single_key), hex::encode(&key));
+                            assert!(single_ikey != ikey);
                             while (single_ikey & (U256::ONE << 255)) == (ikey & (U256::ONE << 255))
                             {
                                 single_ikey = truncate_shl(single_ikey, 1);
                                 ikey = truncate_shl(ikey, 1);
                                 diverging_height -= 1;
+                                log::trace!(
+                                    "diverging_height decreased to {}, single_ikey {}, ikey {}",
+                                    diverging_height,
+                                    single_ikey,
+                                    ikey,
+                                );
                                 opf(Hashed::default());
                             }
                             assert!(high4(single_ikey) != high4(ikey));
@@ -193,6 +200,7 @@ impl<C: ContentAddrStore> Tree<C> {
             // zero top four bits
             ikey = rm4(ikey)
         }
+        unreachable!()
     }
 
     /// Insert a key-value pair, mutating this value.
@@ -207,7 +215,7 @@ impl<C: ContentAddrStore> Tree<C> {
     }
 
     /// Debug graphviz
-    fn debug_graphviz(&self) {
+    pub fn debug_graphviz(&self) {
         match self.cas.realize(self.ptr) {
             Some(RawNode::Single(_, single_key, _)) => {
                 eprintln!(
@@ -244,7 +252,12 @@ impl<C: ContentAddrStore> Tree<C> {
 
     /// Low-level insertion function
     fn with_binding(self, key: Hashed, ikey: U256, value: &[u8], rec_height: u8) -> Self {
-        log::trace!("RECURSE DOWN  {} {}", hex::encode(&key), ikey);
+        log::trace!(
+            "RECURSE DOWN  {} {} {}",
+            hex::encode(&key),
+            hex::encode(ikey.to_be_bytes()),
+            rec_height
+        );
         // eprintln!(
         //     "with_binding(ptr = {:?}, ikey = {}, value = {:?}, rec_height = {})",
         //     hex::encode(self.ptr),
@@ -256,20 +269,24 @@ impl<C: ContentAddrStore> Tree<C> {
         let new_node = match self.cas.realize(self.ptr) {
             Some(RawNode::Single(height, single_key, node_value)) => {
                 assert!(height == rec_height);
-                if key == single_key {
+                let single_ikey = truncate_shl(
+                    U256::from_be_bytes(single_key),
+                    (64 - (rec_height as u32)) * 4,
+                );
+                if ikey == single_ikey {
                     if value.len() == 0 {
                         return Self {
                             cas: self.cas,
                             ptr: Hashed::default(),
                         };
                     }
+                    log::trace!(
+                        "duplicate key, so simply creating a new single key {}",
+                        hex::encode(key)
+                    );
                     RawNode::Single(height, key, Cow::Borrowed(value))
                 } else {
                     // see whether the two keys differ in their first 4 bits
-                    let single_ikey = truncate_shl(
-                        U256::from_be_bytes(single_key),
-                        (64 - (rec_height as u32)) * 4,
-                    );
                     let single_ifrag = single_ikey.wrapping_shr(252).as_usize();
                     let key_ifrag = ikey.wrapping_shr(252).as_usize();
                     if single_ifrag != key_ifrag {
