@@ -27,7 +27,7 @@ pub type Hashed = [u8; 32];
 //         for i in 0u64..100 {
 //             let key = hash_data(&i.to_be_bytes());
 //             tree.insert(key, key.to_vec().into());
-//         }
+//         }z
 //         tree.save();
 //         tree.get_with_proof([0; 32]);
 //         forest.delete_tree(tree.root_hash());

@@ -97,6 +97,11 @@ impl<C: ContentAddrStore> Clone for Tree<C> {
 }
 
 impl<C: ContentAddrStore> Tree<C> {
+    /// Clears the whole tree.
+    pub fn clear(&mut self) {
+        self.ptr = Hashed::default()
+    }
+
     /// Obtains the value associated with the given key.
     pub fn get<'a>(&'a self, key: Hashed) -> Cow<'a, [u8]> {
         self.get_value(key, None)
