@@ -6,7 +6,7 @@ use novasmt::{Database, Hashed, InMemoryCas};
 #[cfg(fuzzing)]
 fn main() {
     use env_logger::Env;
-    env_logger::Builder::from_env(Env::default().default_filter_or("trace")).init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
     // Here you can parse `std::env::args and
     // setup / initialize your project
 
@@ -23,10 +23,7 @@ fn main() {
 }
 
 fn test_once(data: &[u8]) {
-    let broken_up: Vec<Hashed> = data
-        .chunks_exact(32)
-        .map(|v| v.try_into().unwrap())
-        .collect();
+    let broken_up: Vec<Hashed> = data.windows(32).map(|v| v.try_into().unwrap()).collect();
     let forest = Database::new(InMemoryCas::default());
     let mut tree = forest.get_tree([0; 32]).unwrap();
     for bytes in broken_up.iter() {
@@ -35,9 +32,9 @@ fn test_once(data: &[u8]) {
         let (r, p) = tree.get_with_proof([0; 32]);
         assert_eq!(&r[..], &bytes[..]);
         assert!(p.verify(tree.root_hash(), [0; 32], bytes.as_ref()));
-        tree.debug_graphviz();
+        // tree.debug_graphviz();
         tree.insert(*bytes, bytes);
-        tree.debug_graphviz();
+        // tree.debug_graphviz();
         let gotten = tree.get_with_proof(*bytes);
         assert_eq!(gotten.0.as_ref(), bytes.as_ref());
         assert!(tree

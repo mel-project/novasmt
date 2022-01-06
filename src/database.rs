@@ -116,7 +116,7 @@ impl<C: ContentAddrStore> Tree<C> {
     pub fn get_with_proof<'a>(&'a self, key: Hashed) -> (Cow<'a, [u8]>, FullProof) {
         let mut p = Vec::new();
         let res = self.get_value(key, Some(&mut |h| p.push(h)));
-        log::trace!("proof: {:?}", p);
+        // log::trace!("proof: {:?}", p);
         p.resize(256, Default::default());
         let p = FullProof(p);
         assert!(p.verify(self.ptr, key, &res));
@@ -154,7 +154,7 @@ impl<C: ContentAddrStore> Tree<C> {
         let mut ptr = self.ptr;
         let mut ikey = U256::from_be_bytes(key);
         for depth in 0.. {
-            log::trace!("get at depth {}", depth);
+            log::trace!("get at depth {}, ikey {}", depth, ikey);
             match self.cas.realize(ptr) {
                 Some(RawNode::Single(height, single_key, data)) => {
                     let mut single_ikey =
@@ -384,7 +384,11 @@ fn rm4(i: U256) -> U256 {
 }
 
 fn truncate_shl(i: U256, offset: u32) -> U256 {
-    i.reverse_bits().wrapping_shr(offset).reverse_bits()
+    if offset >= 256 {
+        U256::ZERO
+    } else {
+        i.reverse_bits().wrapping_shr(offset).reverse_bits()
+    }
 }
 
 fn high4(i: U256) -> usize {
