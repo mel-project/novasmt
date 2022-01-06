@@ -180,7 +180,7 @@ impl<C: ContentAddrStore> Tree<C> {
                                 opf(Hashed::default());
                             }
                             assert!(high4(single_ikey) != high4(ikey));
-                            opf(singleton_smt_root(diverging_height, single_key, &data));
+                            opf(singleton_smt_root(diverging_height - 1, single_key, &data));
                         }
                         return Cow::Owned(Vec::new());
                     }
