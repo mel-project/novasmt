@@ -2,6 +2,7 @@ use std::{borrow::Cow, sync::Arc};
 
 use dashmap::DashMap;
 use ethnum::U256;
+use genawaiter::rc::Gen;
 use replace_with::replace_with_or_abort;
 
 use crate::{
@@ -52,7 +53,7 @@ impl ContentAddrStore for InMemoryCas {
     }
 }
 
-/// A database full of SMTs.
+/// A database full of SMTs. Generic over where the SMTs are actually stored.
 #[derive(Debug)]
 pub struct Database<C: ContentAddrStore> {
     cas: Arc<C>,
@@ -106,6 +107,27 @@ impl<C: ContentAddrStore> Tree<C> {
         let p = FullProof(p);
         assert!(p.verify(self.ptr, key, &res));
         (res, p)
+    }
+
+    /// Iterates over the elements of the SMT in an arbitrary order.
+    pub fn iter(&'_ self) -> impl Iterator<Item = (Hashed, Cow<'_, [u8]>)> + '_ {
+        let gen = Gen::new(|co| async move {
+            let mut dfs_stack: Vec<Hashed> = vec![self.ptr];
+            while let Some(top) = dfs_stack.pop() {
+                if top == [0; 32] {
+                    continue;
+                }
+                match self.cas.realize(top).unwrap() {
+                    RawNode::Single(_, k, v) => co.yield_((k, v)).await,
+                    RawNode::Hexary(_, _, gggc) => {
+                        for gggc in gggc {
+                            dfs_stack.push(*gggc)
+                        }
+                    }
+                }
+            }
+        });
+        gen.into_iter()
     }
 
     /// Low-level getting function.

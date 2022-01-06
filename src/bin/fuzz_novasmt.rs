@@ -1,6 +1,5 @@
 use std::convert::TryInto;
 
-use bytes::Bytes;
 #[cfg(fuzzing)]
 use honggfuzz::fuzz;
 use novasmt::{Database, Hashed, InMemoryCas};
