@@ -81,10 +81,19 @@ impl<C: ContentAddrStore> Database<C> {
 }
 
 /// A SMT tree stored in some database.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Tree<C: ContentAddrStore> {
     cas: Arc<C>,
     ptr: Hashed,
+}
+
+impl<C: ContentAddrStore> Clone for Tree<C> {
+    fn clone(&self) -> Self {
+        Self {
+            cas: self.cas.clone(),
+            ptr: self.ptr,
+        }
+    }
 }
 
 impl<C: ContentAddrStore> Tree<C> {
