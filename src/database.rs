@@ -59,6 +59,14 @@ pub struct Database<C: ContentAddrStore> {
     cas: Arc<C>,
 }
 
+impl<C: ContentAddrStore> Clone for Database<C> {
+    fn clone(&self) -> Self {
+        Self {
+            cas: self.cas.clone(),
+        }
+    }
+}
+
 impl<C: ContentAddrStore> Database<C> {
     /// Create a new Database.
     pub fn new(cas: C) -> Self {
