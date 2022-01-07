@@ -11,7 +11,7 @@ use crate::{
 };
 
 /// Trait that implements a thread-safe, concurrent low-level content addressed store.
-pub trait ContentAddrStore: Send + Sync {
+pub trait ContentAddrStore: Send + Sync + 'static {
     /// Gets a block by hash.
     fn get<'a>(&'a self, key: &[u8]) -> Option<Cow<'a, [u8]>>;
 
