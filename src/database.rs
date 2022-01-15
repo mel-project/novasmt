@@ -2,7 +2,7 @@ use std::{borrow::Cow, sync::Arc};
 
 use dashmap::DashMap;
 use ethnum::U256;
-use genawaiter::rc::Gen;
+use genawaiter::sync::Gen;
 use replace_with::replace_with_or_abort;
 
 use crate::{
