@@ -25,6 +25,7 @@ dashmap = "5.0.0"
 ethnum = "1.0.4"
 replace_with = "0.1.7"
 # replace_with = "0.1.7"
+rayon="1.5"
 
 [target.'cfg(fuzzing)'.dependencies]
 honggfuzz= "0.5.54"

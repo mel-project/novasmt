@@ -3,6 +3,7 @@ use std::{borrow::Cow, sync::Arc};
 use dashmap::DashMap;
 use ethnum::U256;
 use genawaiter::sync::Gen;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use replace_with::replace_with_or_abort;
 
 use crate::{
@@ -150,6 +151,27 @@ impl<C: ContentAddrStore> Tree<C> {
             }
         });
         gen.into_iter()
+    }
+
+    /// Runs a callback on every element of the SMT, in parallel.
+    pub fn par_for_each(&'_ self, f: impl Fn(Hashed, Cow<'_, [u8]>) + Send + Sync) {
+        self.par_for_each_inner(&f)
+    }
+
+    fn par_for_each_inner(&'_ self, f: &(impl Fn(Hashed, Cow<'_, [u8]>) + Send + Sync)) {
+        match self.cas.realize(self.ptr) {
+            None => (),
+            Some(RawNode::Hexary(_, _, gggc)) => {
+                gggc.par_iter().for_each(|hash| {
+                    Self {
+                        cas: self.cas.clone(),
+                        ptr: **hash,
+                    }
+                    .par_for_each_inner(f)
+                });
+            }
+            Some(RawNode::Single(_, k, v)) => f(k, v),
+        }
     }
 
     /// Low-level getting function.
@@ -405,7 +427,6 @@ fn high4(i: U256) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use dashmap::DashMap;
     use ethnum::U256;
     use quickcheck_macros::quickcheck;
     use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
