@@ -27,6 +27,7 @@ replace_with = "0.1.7"
 # replace_with = "0.1.7"
 rayon="1.5"
 rustc-hash = "1.1.0"
+lru = "0.7.2"
 
 [target.'cfg(fuzzing)'.dependencies]
 honggfuzz= "0.5.54"

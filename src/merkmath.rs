@@ -1,4 +1,5 @@
 use bitvec::prelude::*;
+use lru::LruCache;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::io::Read;
@@ -24,19 +25,35 @@ pub(crate) fn key_to_path(
     bslice.iter().by_val()
 }
 
-/// Returns the root hash of a one-element SMT with the given key and value.
-pub(crate) fn singleton_smt_root(height: usize, key: Hashed, val: &[u8]) -> Hashed {
+fn singleton_smt_roots(key: Hashed, val: &[u8], out: &mut [Hashed]) {
     let mut rpath = key_to_path(&key).collect::<Vec<_>>();
     rpath.reverse();
-    let mut toret = hash_data(val);
-    for bit in rpath.into_iter().take(height) {
-        if bit {
-            toret = hash_node([0; 32], toret)
+    out[0] = hash_data(val);
+    for i in 0..rpath.len() {
+        out[i + 1] = if rpath[i] {
+            hash_node([0; 32], out[i])
         } else {
-            toret = hash_node(toret, [0; 32])
+            hash_node(out[i], [0; 32])
         }
     }
-    toret
+}
+
+/// Returns the root hash of a one-element SMT with the given key and value.
+pub(crate) fn singleton_smt_root(height: usize, key: Hashed, val: &[u8]) -> Hashed {
+    thread_local! {
+        static CACHE: std::cell::RefCell<lru::LruCache<(Hashed,Vec<u8>), [Hashed; 258], std::hash::BuildHasherDefault<rustc_hash::FxHasher>>>   = std::cell::RefCell::new(LruCache::with_hasher(65536, Default::default()));
+    }
+    CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some(val) = cache.get(&(key, val.to_vec())) {
+            val[height]
+        } else {
+            let mut buf = [Hashed::default(); 258];
+            singleton_smt_roots(key, val, &mut buf);
+            cache.put((key, val.to_vec()), buf);
+            buf[height]
+        }
+    })
 }
 
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]

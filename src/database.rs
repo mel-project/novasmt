@@ -478,8 +478,6 @@ mod tests {
         assert_eq!(empty.count(), count);
         // empty.debug_graphviz();
         let _ = empty.get_with_proof([0; 32]);
-        empty.insert([0; 32], b"hello world");
-        let _ = empty.get_with_proof([0; 32]);
         eprintln!("{} elements in database", db.storage().0.len());
         bindings
             .par_iter()
