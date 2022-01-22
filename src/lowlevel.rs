@@ -1,8 +1,6 @@
 use std::{
-    array::IntoIter,
     borrow::{Borrow, Cow},
     io::Write,
-    mem::MaybeUninit,
 };
 
 use arrayref::array_ref;
@@ -68,7 +66,7 @@ pub enum RawNode<'a> {
     /// Single data block.
     Single(u8, Hashed, Cow<'a, [u8]>),
     /// Height (between 1 and 64), count, and great-grandchildren
-    Hexary(u8, u64, [Cow<'a, Hashed>; 16]),
+    Hexary(u8, u64, Box<[Hashed; 16]>),
 }
 
 impl<'a> RawNode<'a> {
@@ -76,7 +74,7 @@ impl<'a> RawNode<'a> {
     pub fn hash(&self) -> Hashed {
         match self {
             RawNode::Single(height, key, value) => {
-                singleton_smt_root((*height as usize) * 4, *key, &value)
+                singleton_smt_root((*height as usize) * 4, *key, value)
             }
             RawNode::Hexary(_, _, gggc) => ExplodedHexary::new(gggc).root,
         }
@@ -117,7 +115,7 @@ impl<'a> RawNode<'a> {
             RawNode::Hexary(height, count, gggc) => {
                 let mut o = out.write(&[*height])?;
                 o += out.write(&count.to_le_bytes())?;
-                for gggc in gggc {
+                for gggc in gggc.iter() {
                     o += out.write(&gggc[..])?;
                 }
                 Ok(o)
@@ -146,25 +144,25 @@ impl<'a> RawNode<'a> {
                 }
                 let count = u64::from_le_bytes(*array_ref![slice, 1, 8]);
                 let slice = &slice[9..];
-                let gggc: [Cow<'a, Hashed>; 16] = [
-                    Cow::Borrowed(array_ref![slice, 0, 32]),
-                    Cow::Borrowed(array_ref![slice, 32, 32]),
-                    Cow::Borrowed(array_ref![slice, 32 * 2, 32]),
-                    Cow::Borrowed(array_ref![slice, 32 * 3, 32]),
-                    Cow::Borrowed(array_ref![slice, 32 * 4, 32]),
-                    Cow::Borrowed(array_ref![slice, 32 * 5, 32]),
-                    Cow::Borrowed(array_ref![slice, 32 * 6, 32]),
-                    Cow::Borrowed(array_ref![slice, 32 * 7, 32]),
-                    Cow::Borrowed(array_ref![slice, 32 * 8, 32]),
-                    Cow::Borrowed(array_ref![slice, 32 * 9, 32]),
-                    Cow::Borrowed(array_ref![slice, 32 * 10, 32]),
-                    Cow::Borrowed(array_ref![slice, 32 * 11, 32]),
-                    Cow::Borrowed(array_ref![slice, 32 * 12, 32]),
-                    Cow::Borrowed(array_ref![slice, 32 * 13, 32]),
-                    Cow::Borrowed(array_ref![slice, 32 * 14, 32]),
-                    Cow::Borrowed(array_ref![slice, 32 * 15, 32]),
+                let gggc: [Hashed; 16] = [
+                    *(array_ref![slice, 0, 32]),
+                    *(array_ref![slice, 32, 32]),
+                    *(array_ref![slice, 32 * 2, 32]),
+                    *(array_ref![slice, 32 * 3, 32]),
+                    *(array_ref![slice, 32 * 4, 32]),
+                    *(array_ref![slice, 32 * 5, 32]),
+                    *(array_ref![slice, 32 * 6, 32]),
+                    *(array_ref![slice, 32 * 7, 32]),
+                    *(array_ref![slice, 32 * 8, 32]),
+                    *(array_ref![slice, 32 * 9, 32]),
+                    *(array_ref![slice, 32 * 10, 32]),
+                    *(array_ref![slice, 32 * 11, 32]),
+                    *(array_ref![slice, 32 * 12, 32]),
+                    *(array_ref![slice, 32 * 13, 32]),
+                    *(array_ref![slice, 32 * 14, 32]),
+                    *(array_ref![slice, 32 * 15, 32]),
                 ];
-                Some(Self::Hexary(height, count, gggc))
+                Some(Self::Hexary(height, count, gggc.into()))
             }
         }
     }
@@ -173,31 +171,7 @@ impl<'a> RawNode<'a> {
     pub fn into_owned(self) -> RawNode<'static> {
         match self {
             RawNode::Single(h, k, c) => RawNode::Single(h, k, c.into_owned().into()),
-            RawNode::Hexary(h, c, gggc) => {
-                // unfortunately this is probably the only way of doing this properly
-                let mut new_gggc = [
-                    MaybeUninit::<Cow<'static, [u8; 32]>>::uninit(),
-                    MaybeUninit::<Cow<'static, [u8; 32]>>::uninit(),
-                    MaybeUninit::<Cow<'static, [u8; 32]>>::uninit(),
-                    MaybeUninit::<Cow<'static, [u8; 32]>>::uninit(),
-                    MaybeUninit::<Cow<'static, [u8; 32]>>::uninit(),
-                    MaybeUninit::<Cow<'static, [u8; 32]>>::uninit(),
-                    MaybeUninit::<Cow<'static, [u8; 32]>>::uninit(),
-                    MaybeUninit::<Cow<'static, [u8; 32]>>::uninit(),
-                    MaybeUninit::<Cow<'static, [u8; 32]>>::uninit(),
-                    MaybeUninit::<Cow<'static, [u8; 32]>>::uninit(),
-                    MaybeUninit::<Cow<'static, [u8; 32]>>::uninit(),
-                    MaybeUninit::<Cow<'static, [u8; 32]>>::uninit(),
-                    MaybeUninit::<Cow<'static, [u8; 32]>>::uninit(),
-                    MaybeUninit::<Cow<'static, [u8; 32]>>::uninit(),
-                    MaybeUninit::<Cow<'static, [u8; 32]>>::uninit(),
-                    MaybeUninit::<Cow<'static, [u8; 32]>>::uninit(),
-                ];
-                for (i, gggc) in IntoIter::new(gggc).enumerate() {
-                    new_gggc[i].write(Cow::Owned(gggc.into_owned()));
-                }
-                RawNode::Hexary(h, c, unsafe { std::mem::transmute(new_gggc) })
-            }
+            RawNode::Hexary(h, c, gggc) => RawNode::Hexary(h, c, gggc),
         }
     }
 }

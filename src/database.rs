@@ -20,7 +20,7 @@ pub trait ContentAddrStore: Send + Sync + 'static {
     fn insert(&self, key: &[u8], value: &[u8]);
 
     /// Helper function to realize a hash as a raw node. May override if caching, etc makes sense, but the default impl is reasonable in most cases.
-    fn realize<'a>(&'a self, hash: Hashed) -> Option<RawNode<'a>> {
+    fn realize(&self, hash: Hashed) -> Option<RawNode<'_>> {
         if hash == [0; 32] {
             None
         } else {
@@ -112,7 +112,7 @@ impl<C: ContentAddrStore> Tree<C> {
     }
 
     /// Obtains the value associated with the given key.
-    pub fn get<'a>(&'a self, key: Hashed) -> Cow<'a, [u8]> {
+    pub fn get(&self, key: Hashed) -> Cow<'_, [u8]> {
         self.get_value(key, None)
     }
 
@@ -122,7 +122,7 @@ impl<C: ContentAddrStore> Tree<C> {
     }
 
     /// Obtains the value associated with the given key, along with an associated proof.
-    pub fn get_with_proof<'a>(&'a self, key: Hashed) -> (Cow<'a, [u8]>, FullProof) {
+    pub fn get_with_proof(&self, key: Hashed) -> (Cow<'_, [u8]>, FullProof) {
         let mut p = Vec::new();
         let res = self.get_value(key, Some(&mut |h| p.push(h)));
         // log::trace!("proof: {:?}", p);
@@ -143,7 +143,7 @@ impl<C: ContentAddrStore> Tree<C> {
                 match self.cas.realize(top).unwrap() {
                     RawNode::Single(_, k, v) => co.yield_((k, v)).await,
                     RawNode::Hexary(_, _, gggc) => {
-                        for gggc in gggc {
+                        for gggc in gggc.iter() {
                             dfs_stack.push(*gggc)
                         }
                     }
@@ -165,7 +165,7 @@ impl<C: ContentAddrStore> Tree<C> {
                 gggc.par_iter().for_each(|hash| {
                     Self {
                         cas: self.cas.clone(),
-                        ptr: **hash,
+                        ptr: *hash,
                     }
                     .par_for_each_inner(f)
                 });
@@ -223,7 +223,7 @@ impl<C: ContentAddrStore> Tree<C> {
                         }
                     }
                     log::trace!("key frag {} for key {}", key_frag, hex::encode(key));
-                    ptr = *gggc[key_frag];
+                    ptr = gggc[key_frag];
                 }
                 None => return Cow::Owned(Vec::new()),
             }
@@ -256,10 +256,10 @@ impl<C: ContentAddrStore> Tree<C> {
             }
             Some(RawNode::Hexary(_, _, gggc)) => {
                 for (i, child) in gggc.iter().enumerate() {
-                    if **child != [0u8; 32] {
+                    if *child != [0u8; 32] {
                         Self {
                             cas: self.cas.clone(),
-                            ptr: **child,
+                            ptr: *child,
                         }
                         .debug_graphviz();
                         eprintln!(
@@ -304,7 +304,7 @@ impl<C: ContentAddrStore> Tree<C> {
                     (64 - (rec_height as u32)) * 4,
                 );
                 if ikey == single_ikey {
-                    if value.len() == 0 {
+                    if value.is_empty() {
                         return Self {
                             cas: self.cas,
                             ptr: Hashed::default(),
@@ -341,10 +341,10 @@ impl<C: ContentAddrStore> Tree<C> {
                             &node_value,
                             rec_height - 1,
                         );
-                        let mut gggc: [Cow<'static, Hashed>; 16] = Default::default();
-                        gggc[single_ifrag] = Cow::Owned(single_foo.ptr);
-                        gggc[key_ifrag] = Cow::Owned(key_foo.ptr);
-                        RawNode::Hexary(height, 2, gggc)
+                        let mut gggc: [Hashed; 16] = Default::default();
+                        gggc[single_ifrag] = single_foo.ptr;
+                        gggc[key_ifrag] = key_foo.ptr;
+                        RawNode::Hexary(height, 2, gggc.into())
                     } else {
                         // we need to recurse down a height
                         let lower = RawNode::Single(height - 1, single_key, node_value);
@@ -360,9 +360,9 @@ impl<C: ContentAddrStore> Tree<C> {
                             value,
                             rec_height - 1,
                         );
-                        let mut gggc: [Cow<'static, Hashed>; 16] = Default::default();
-                        gggc[single_ifrag] = Cow::Owned(lower.ptr);
-                        RawNode::Hexary(height, 2, gggc)
+                        let mut gggc: [Hashed; 16] = Default::default();
+                        gggc[single_ifrag] = lower.ptr;
+                        RawNode::Hexary(height, 2, gggc.into())
                     }
                 }
             }
@@ -373,11 +373,11 @@ impl<C: ContentAddrStore> Tree<C> {
                 let to_change = &mut gggc[key_frag];
                 let sub_tree = Self {
                     cas: self.cas.clone(),
-                    ptr: **to_change,
+                    ptr: *to_change,
                 };
                 let pre_count = sub_tree.count();
                 let sub_tree = sub_tree.with_binding(key, rm4(ikey), value, rec_height - 1);
-                *to_change = Cow::Owned(sub_tree.ptr);
+                *to_change = sub_tree.ptr;
                 RawNode::Hexary(
                     height,
                     if sub_tree.count() > pre_count {
@@ -473,7 +473,7 @@ mod tests {
         let db = Database::new(InMemoryCas::default());
         let mut empty = db.get_tree(Hashed::default()).unwrap();
         for (k, v) in bindings.iter() {
-            empty = empty.with(*k, &v);
+            empty = empty.with(*k, v);
         }
         assert_eq!(empty.count(), count);
         // empty.debug_graphviz();

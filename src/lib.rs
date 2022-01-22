@@ -1,4 +1,5 @@
 mod database;
+pub mod dense;
 mod hash;
 mod lowlevel;
 mod merkmath;
