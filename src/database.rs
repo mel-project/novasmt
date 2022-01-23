@@ -87,6 +87,13 @@ impl<C: ContentAddrStore> Database<C> {
     pub fn storage(&self) -> &C {
         &self.cas
     }
+
+    /// Obtains a reference to the backing store, as a database.
+    pub fn database(&self) -> Database<C> {
+        Database {
+            cas: self.cas.clone(),
+        }
+    }
 }
 
 /// A SMT tree stored in some database.
