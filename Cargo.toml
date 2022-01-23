@@ -1,6 +1,6 @@
 [package]
 name = "novasmt"
-version = "0.2.17"
+version = "0.2.18-alpha.0"
 authors = ["nullchinchilla <nullchinchilla@pm.me>"]
 edition = "2018"
 description="Storage-agnostic, highly ergonomic sparse Merkle trees"
