@@ -41,10 +41,11 @@ fn singleton_smt_roots(key: Hashed, val: &[u8], out: &mut [Hashed]) {
 /// Returns the root hash of a one-element SMT with the given key and value.
 pub(crate) fn singleton_smt_root(height: usize, key: Hashed, val: &[u8]) -> Hashed {
     thread_local! {
-        static CACHE: std::cell::RefCell<lru::LruCache<(Hashed,Vec<u8>), [Hashed; 258], std::hash::BuildHasherDefault<rustc_hash::FxHasher>>>   = std::cell::RefCell::new(LruCache::with_hasher(1024, Default::default()));
+        static CACHE: std::cell::RefCell<lru::LruCache<(Hashed,Vec<u8>), [Hashed; 258], std::hash::BuildHasherDefault<rustc_hash::FxHasher>>>   = std::cell::RefCell::new(LruCache::with_hasher(128, Default::default()));
     }
     CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
+        // dbg!(cache.len());
         if let Some(val) = cache.get(&(key, val.to_vec())) {
             val[height]
         } else {
