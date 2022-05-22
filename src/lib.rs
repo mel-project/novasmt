@@ -5,6 +5,7 @@ mod lowlevel;
 mod merkmath;
 pub use database::{ContentAddrStore, Database, InMemoryCas, Tree};
 pub use merkmath::*;
+pub use hash::*;
 
 pub type Hashed = [u8; 32];
 
