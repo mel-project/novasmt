@@ -7,6 +7,7 @@ use crate::{
 
 /// A structure that holds an in-memory, dense Merkle tree.
 pub struct DenseMerkleTree {
+    datablocks: Vec<Vec<u8>>,
     bottom_to_top: Vec<Hashed>,
 }
 
@@ -36,12 +37,26 @@ impl DenseMerkleTree {
             });
             npp /= 2
         }
-        Self { bottom_to_top: btt }
+        let datablocks_vec: Vec<Vec<u8>> = datablocks
+            .iter()
+            .collect::<Vec<&R>>()
+            .iter()
+            .map(|blk| blk.as_ref().to_vec())
+            .collect();
+        Self {
+            datablocks: datablocks_vec,
+            bottom_to_top: btt
+        }
     }
 
     /// Root hash of the DMT.
     pub fn root_hash(&self) -> Hashed {
         *self.bottom_to_top.last().unwrap()
+    }
+
+    /// Get an arbitrary datablock
+    pub fn get_datablock(&self, idx: usize) -> Vec<u8> {
+        self.datablocks[idx].clone()
     }
 
     /// Obtain a proof for the ith element.
@@ -92,5 +107,13 @@ mod tests {
             1,
             hash_data(b"world")
         ))
+    }
+
+    #[test]
+    fn get_datablock() {
+        let vals = [b"hello", b"world", b"fdfef"];
+        let mt = DenseMerkleTree::new(&vals);
+        let blk = mt.get_datablock(1);
+        assert!(blk == b"world")
     }
 }
