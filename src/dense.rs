@@ -55,8 +55,12 @@ impl DenseMerkleTree {
     }
 
     /// Get an arbitrary datablock
-    pub fn get_datablock(&self, idx: usize) -> Vec<u8> {
-        self.datablocks[idx].clone()
+    pub fn get_datablock(&self, idx: usize) -> Option<&Vec<u8>> {
+        if idx < self.datablocks.len() {
+            Some(&self.datablocks[idx])
+        } else {
+            None
+        }
     }
 
     /// Obtain a proof for the ith element.
@@ -113,7 +117,7 @@ mod tests {
     fn get_datablock() {
         let vals = [b"hello", b"world", b"fdfef"];
         let mt = DenseMerkleTree::new(&vals);
-        let blk = mt.get_datablock(1);
+        let blk = mt.get_datablock(1).unwrap();
         assert!(blk == b"world")
     }
 }
