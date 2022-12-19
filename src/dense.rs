@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use itertools::Itertools;
 
 use crate::{
@@ -7,7 +8,7 @@ use crate::{
 
 /// A structure that holds an in-memory, dense Merkle tree.
 pub struct DenseMerkleTree {
-    datablocks: Vec<Vec<u8>>,
+    datablocks: Vec<Bytes>,
     bottom_to_top: Vec<Hashed>,
 }
 
@@ -37,15 +38,13 @@ impl DenseMerkleTree {
             });
             npp /= 2
         }
-        let datablocks_vec: Vec<Vec<u8>> = datablocks
+        let datablocks_vec: Vec<Bytes> = datablocks
             .iter()
-            .collect::<Vec<&R>>()
-            .iter()
-            .map(|blk| blk.as_ref().to_vec())
+            .map(|s| s.as_ref().to_vec().into())
             .collect();
         Self {
             datablocks: datablocks_vec,
-            bottom_to_top: btt
+            bottom_to_top: btt,
         }
     }
 
@@ -54,13 +53,9 @@ impl DenseMerkleTree {
         *self.bottom_to_top.last().unwrap()
     }
 
-    /// Get an arbitrary datablock
-    pub fn get_datablock(&self, idx: usize) -> Option<&Vec<u8>> {
-        if idx < self.datablocks.len() {
-            Some(&self.datablocks[idx])
-        } else {
-            None
-        }
+    /// Gets all the data blocks inside the Merkle tree.
+    pub fn data(&self) -> &[Bytes] {
+        &self.datablocks
     }
 
     /// Obtain a proof for the ith element.
@@ -117,7 +112,7 @@ mod tests {
     fn get_datablock() {
         let vals = [b"hello", b"world", b"fdfef"];
         let mt = DenseMerkleTree::new(&vals);
-        let blk = mt.get_datablock(1).unwrap();
-        assert!(blk == b"world")
+        let blk = &mt.data()[1];
+        assert!(blk[..] == b"world"[..])
     }
 }

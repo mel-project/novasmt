@@ -29,6 +29,7 @@ rayon="1.5"
 rustc-hash = "1.1.0"
 lru = "0.7.2"
 itertools = "0.10.3"
+bytes = "1.3.0"
 
 [target.'cfg(fuzzing)'.dependencies]
 honggfuzz= "0.5.54"
