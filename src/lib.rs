@@ -1,11 +1,13 @@
 mod database;
 pub mod dense;
+mod error;
+mod gc;
 mod hash;
 mod lowlevel;
 mod merkmath;
-pub use database::{ContentAddrStore, Database, InMemoryCas, Tree};
-pub use merkmath::*;
+pub use database::{Database, InMemoryCas, NodeStore, Tree};
 pub use hash::*;
+pub use merkmath::*;
 
 pub type Hashed = [u8; 32];
 
