@@ -5,7 +5,7 @@ mod gc;
 mod hash;
 mod lowlevel;
 mod merkmath;
-pub use database::{Database, InMemoryCas, NodeStore, Tree};
+pub use database::{InMemoryStore, NodeStore, Tree};
 pub use hash::*;
 pub use merkmath::*;
 

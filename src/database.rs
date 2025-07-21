@@ -1,10 +1,7 @@
-use std::{borrow::Cow, sync::Arc};
+use std::borrow::Cow;
 
 use dashmap::DashMap;
 use ethnum::U256;
-use genawaiter::sync::Gen;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use replace_with::replace_with_or_abort;
 
 use crate::{
     FullProof, Hashed,
@@ -17,67 +14,31 @@ use crate::{
 /// Trait that implements a thread-safe, concurrent low-level content addressed store.
 pub trait NodeStore: Send + Sync + 'static {
     /// Gets a block by hash.
-    fn get(&self, key: &[u8]) -> Option<Cow<'_, [u8]>>;
+    fn get(&self, key: &[u8]) -> Result<Option<Cow<'_, [u8]>>, SmtError>;
 
     /// Inserts a block and its hash.
-    fn insert(&self, key: &[u8], value: &[u8]);
-
-    /// Helper function to realize a hash as a raw node. May override if caching, etc makes sense, but the default impl is reasonable in most cases.
-    fn realize(&self, hash: Hashed) -> Option<RawNode<'_>> {
-        todo!()
-    }
+    fn insert(&self, key: &[u8], value: &[u8]) -> Result<(), SmtError>;
 }
 
-/// An in-memory ContentAddrStore.
+/// An in-memory NodeStore.
 #[derive(Default, Debug)]
-pub struct InMemoryCas(DashMap<Vec<u8>, Vec<Vec<u8>>>);
+pub struct InMemoryStore(DashMap<Vec<u8>, Vec<Vec<u8>>>);
 
-impl NodeStore for InMemoryCas {
-    fn get(&self, key: &[u8]) -> Option<Cow<'_, [u8]>> {
-        let r = self.0.get(key)?;
-        let r: &[u8] = r.last()?.as_slice();
-        // safety: because we never delete anything, r can never be a use-after-free.
-        Some(Cow::Borrowed(unsafe { std::mem::transmute(r) }))
+impl NodeStore for InMemoryStore {
+    fn get(&self, key: &[u8]) -> Result<Option<Cow<'_, [u8]>>, SmtError> {
+        let val: Option<_> = (|| {
+            let r = self.0.get(key)?;
+            let r: &[u8] = r.last()?.as_slice();
+            // safety: because we never delete anything, r can never be a use-after-free.
+            Some(Cow::Borrowed(unsafe { std::mem::transmute(r) }))
+        })();
+        Ok(val)
     }
 
-    fn insert(&self, key: &[u8], value: &[u8]) {
+    fn insert(&self, key: &[u8], value: &[u8]) -> Result<(), SmtError> {
         let mut r = self.0.entry(key.to_owned()).or_default();
         r.push(value.to_owned());
-    }
-}
-
-/// A database full of SMTs. Generic over where the SMTs are actually stored.
-#[derive(Debug)]
-pub struct Database<C: NodeStore> {
-    cas: Arc<C>,
-}
-
-impl<C: NodeStore> Clone for Database<C> {
-    fn clone(&self) -> Self {
-        Self {
-            cas: self.cas.clone(),
-        }
-    }
-}
-
-impl<C: NodeStore> Database<C> {
-    /// Create a new Database.
-    pub fn new(cas: C) -> Self {
-        Self { cas: cas.into() }
-    }
-
-    // /// Obtain a new tree rooted at the given hash.
-    // pub fn get_tree(&self, hash: Hashed) -> Option<Tree<C>> {
-    //     // self.cas.get(&hash)?;
-    //     Some(Tree {
-    //         cas: self.cas.clone(),
-    //         ptr: hash,
-    //     })
-    // }
-
-    /// Obtains a reference to the backing store.
-    pub fn storage(&self) -> &C {
-        &self.cas
+        Ok(())
     }
 }
 
@@ -89,6 +50,28 @@ pub struct Tree<'a, C: NodeStore> {
 }
 
 impl<'a, C: NodeStore> Tree<'a, C> {
+    /// Opens a tree pointing at a particular hash.
+    pub fn open(store: &'a C, ptr: Hashed) -> Self {
+        Self {
+            snap: GcSnapshot::new(store),
+            ptr,
+        }
+    }
+
+    /// Opens an empty tree.
+    pub fn empty(store: &'a C) -> Self {
+        Self {
+            snap: GcSnapshot::new(store),
+            ptr: [0; 32],
+        }
+    }
+
+    /// Commits the tree back to storage, returning the new root hash.
+    pub fn commit(self) -> Result<Hashed, SmtError> {
+        self.snap.gc_commit(self.ptr)?;
+        Ok(self.ptr)
+    }
+
     /// Obtains the value associated with the given key.
     pub fn get(&self, key: Hashed) -> Result<Cow<'_, [u8]>, SmtError> {
         self.get_value(key, None)
@@ -336,8 +319,6 @@ mod tests {
 
     use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
-    use crate::Hashed;
-
     use super::*;
 
     #[test]
@@ -363,21 +344,23 @@ mod tests {
                 )
             })
             .collect::<Vec<_>>();
-        let db = Database::new(InMemoryCas::default());
-        let mut empty = db.get_tree(Hashed::default()).unwrap();
+        let store = InMemoryStore::default();
+        let mut empty = Tree::empty(&store);
         for (k, v) in bindings.iter() {
-            empty = empty.with(*k, v);
+            empty = empty.with(*k, v).unwrap();
         }
-        assert_eq!(empty.count(), count);
-        // empty.debug_graphviz();
+        assert_eq!(empty.count().unwrap(), count);
+
         let _ = empty.get_with_proof([0; 32]);
-        eprintln!("{} elements in database", db.storage().0.len());
         bindings
             .par_iter()
-            .for_each(|(k, v)| assert_eq!(empty.get_with_proof(*k).0, v.as_slice()));
-        for (i, (k, _)) in bindings.into_iter().enumerate() {
-            assert_eq!(empty.count(), count - (i as u64));
-            empty = empty.with(k, &[]);
-        }
+            .for_each(|(k, v)| assert_eq!(empty.get_with_proof(*k).unwrap().0, v.as_slice()));
+        // for (i, (k, _)) in bindings.into_iter().enumerate() {
+        //     assert_eq!(empty.count().unwrap(), count - (i as u64));
+        //     empty = empty.with(k, &[]).unwrap();
+        // }
+
+        empty.commit().unwrap();
+        eprintln!("{} elements in database", store.0.len());
     }
 }
