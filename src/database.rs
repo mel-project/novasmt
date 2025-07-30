@@ -43,7 +43,7 @@ impl NodeStore for InMemoryStore {
 }
 
 /// A SMT tree stored in some database.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Tree<'a, C: NodeStore> {
     snap: GcSnapshot<'a, C>,
     ptr: Hashed,
