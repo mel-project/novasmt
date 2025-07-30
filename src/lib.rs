@@ -6,6 +6,7 @@ mod hash;
 mod lowlevel;
 mod merkmath;
 pub use database::{InMemoryStore, NodeStore, Tree};
+pub use error::SmtError;
 pub use hash::*;
 pub use merkmath::*;
 
