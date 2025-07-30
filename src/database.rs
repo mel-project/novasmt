@@ -43,10 +43,19 @@ impl NodeStore for InMemoryStore {
 }
 
 /// A SMT tree stored in some database.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Tree<'a, C: NodeStore> {
     snap: GcSnapshot<'a, C>,
     ptr: Hashed,
+}
+
+impl<'a, C: NodeStore> Clone for Tree<'a, C> {
+    fn clone(&self) -> Self {
+        Self {
+            snap: self.snap.clone(),
+            ptr: self.ptr.clone(),
+        }
+    }
 }
 
 impl<'a, C: NodeStore> Tree<'a, C> {
